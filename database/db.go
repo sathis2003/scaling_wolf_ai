@@ -6,6 +6,7 @@ import (
     "net"
     "time"
 
+    "github.com/jackc/pgx/v5"
     "github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -20,7 +21,7 @@ func Connect(databaseURL string) {
 
     // Allow IPv6 first with automatic IPv4 fallback (Happy Eyeballs)
     // and prefer the simple protocol for broader compatibility (e.g., proxies).
-    cfg.ConnConfig.PreferSimpleProtocol = true
+    cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
     cfg.ConnConfig.Config.DialFunc = (&net.Dialer{
         Timeout:   5 * time.Second,
         DualStack: true,
