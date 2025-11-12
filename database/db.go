@@ -18,11 +18,13 @@ func Connect(databaseURL string) {
         log.Fatalf("db parse config error: %v", err)
     }
 
-    // Force IPv4 (tcp4). sslmode=require in the DSN will enable TLS automatically (e.g., for Supabase).
-    cfg.ConnConfig.Config.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
-        d := &net.Dialer{Timeout: 5 * time.Second}
-        return d.DialContext(ctx, "tcp4", addr)
-    }
+    // Allow IPv6 first with automatic IPv4 fallback (Happy Eyeballs)
+    // and prefer the simple protocol for broader compatibility (e.g., proxies).
+    cfg.ConnConfig.PreferSimpleProtocol = true
+    cfg.ConnConfig.Config.DialFunc = (&net.Dialer{
+        Timeout:   5 * time.Second,
+        DualStack: true,
+    }).DialContext
 
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
