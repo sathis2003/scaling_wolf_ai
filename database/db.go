@@ -13,7 +13,7 @@ import (
 var Pool *pgxpool.Pool
 
 func Connect(databaseURL string) {
-    // Parse DSN and force IPv4 via custom dialer
+    // Parse DSN and configure IPv4-only DNS resolution (Render compatible)
     cfg, err := pgxpool.ParseConfig(databaseURL)
     if err != nil {
         log.Fatalf("db parse config error: %v", err)
