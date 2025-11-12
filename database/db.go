@@ -2,6 +2,7 @@ package database
 
 import (
     "context"
+    "fmt"
     "log"
     "net"
     "time"
@@ -23,8 +24,7 @@ func Connect(databaseURL string) {
     cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
     // Prefer IPv4 at DNS resolution time: filter to A records only.
     cfg.ConnConfig.Config.LookupFunc = func(ctx context.Context, host string) ([]string, error) {
-        r := net.DefaultResolver
-        ips, err := r.LookupIPAddr(ctx, host)
+        ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
         if err != nil {
             return nil, err
         }
@@ -35,10 +35,15 @@ func Connect(databaseURL string) {
             }
         }
         if len(out) == 0 {
-            // Fallback to original host if no IPv4 found
-            return []string{host}, nil
+            return nil, fmt.Errorf("no IPv4 addresses found for host %s", host)
         }
         return out, nil
+    }
+
+    // Force IPv4 dialing only.
+    cfg.ConnConfig.Config.DialFunc = func(ctx context.Context, _ string, addr string) (net.Conn, error) {
+        d := &net.Dialer{Timeout: 5 * time.Second}
+        return d.DialContext(ctx, "tcp4", addr)
     }
 
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
