@@ -22,22 +22,35 @@ func Connect(databaseURL string) {
 
     // Prefer simple protocol for broader compatibility (e.g., proxies).
     cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-    // Prefer IPv4 at DNS resolution time: filter to A records only.
+    // Prefer IPv4 at DNS resolution time: resolve via IPv4-only public DNS and return A records only.
     cfg.ConnConfig.Config.LookupFunc = func(ctx context.Context, host string) ([]string, error) {
-        ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-        if err != nil {
-            return nil, err
-        }
-        out := make([]string, 0, len(ips))
-        for _, ip := range ips {
-            if v4 := ip.IP.To4(); v4 != nil {
-                out = append(out, v4.String())
+        resolvers := []string{"1.1.1.1:53", "8.8.8.8:53"}
+        v4s := make([]string, 0, 4)
+        for _, dns := range resolvers {
+            r := &net.Resolver{
+                PreferGo: true,
+                Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+                    d := net.Dialer{Timeout: 2 * time.Second}
+                    return d.DialContext(ctx, "udp4", dns)
+                },
+            }
+            ips, err := r.LookupIPAddr(ctx, host)
+            if err != nil {
+                continue
+            }
+            for _, ip := range ips {
+                if v4 := ip.IP.To4(); v4 != nil {
+                    v4s = append(v4s, v4.String())
+                }
+            }
+            if len(v4s) > 0 {
+                break
             }
         }
-        if len(out) == 0 {
+        if len(v4s) == 0 {
             return nil, fmt.Errorf("no IPv4 addresses found for host %s", host)
         }
-        return out, nil
+        return v4s, nil
     }
 
     // Force IPv4 dialing only.
