@@ -21,14 +21,24 @@ func Connect(databaseURL string) {
 
     // Prefer simple protocol for broader compatibility (e.g., proxies).
     cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-    // Force IPv4 first to avoid environments without IPv6 routing (e.g., some hosts)
-    cfg.ConnConfig.Config.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
-        d := &net.Dialer{Timeout: 5 * time.Second}
-        if conn, err := d.DialContext(ctx, "tcp4", addr); err == nil {
-            return conn, nil
+    // Prefer IPv4 at DNS resolution time: filter to A records only.
+    cfg.ConnConfig.Config.LookupFunc = func(ctx context.Context, host string) ([]string, error) {
+        r := net.DefaultResolver
+        ips, err := r.LookupIPAddr(ctx, host)
+        if err != nil {
+            return nil, err
         }
-        // Fallback to default tcp (which may try IPv6/IPv4 as available)
-        return d.DialContext(ctx, "tcp", addr)
+        out := make([]string, 0, len(ips))
+        for _, ip := range ips {
+            if v4 := ip.IP.To4(); v4 != nil {
+                out = append(out, v4.String())
+            }
+        }
+        if len(out) == 0 {
+            // Fallback to original host if no IPv4 found
+            return []string{host}, nil
+        }
+        return out, nil
     }
 
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
