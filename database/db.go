@@ -19,13 +19,17 @@ func Connect(databaseURL string) {
         log.Fatalf("db parse config error: %v", err)
     }
 
-    // Allow IPv6 first with automatic IPv4 fallback (Happy Eyeballs)
-    // and prefer the simple protocol for broader compatibility (e.g., proxies).
+    // Prefer simple protocol for broader compatibility (e.g., proxies).
     cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-    cfg.ConnConfig.Config.DialFunc = (&net.Dialer{
-        Timeout:   5 * time.Second,
-        DualStack: true,
-    }).DialContext
+    // Force IPv4 first to avoid environments without IPv6 routing (e.g., some hosts)
+    cfg.ConnConfig.Config.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
+        d := &net.Dialer{Timeout: 5 * time.Second}
+        if conn, err := d.DialContext(ctx, "tcp4", addr); err == nil {
+            return conn, nil
+        }
+        // Fallback to default tcp (which may try IPv6/IPv4 as available)
+        return d.DialContext(ctx, "tcp", addr)
+    }
 
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
